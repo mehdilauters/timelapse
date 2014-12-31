@@ -24,8 +24,8 @@ struct stream {
   float lastMean;
   long int nbSkeep;
 };
-
-VideoCapture *videoCaptures[MAX_CAM];
+int nbCams = 0;
+struct stream streams[MAX_CAM];
 
 void signalHandler( int signum )
 {
@@ -54,13 +54,12 @@ void signalHandler( int signum )
     {
       {
         std::cout << "Ending with signal" << signum << std::endl;
-          for(int i=0; i<MAX_CAM; i++)
+          for(int i=0; i<nbCams; i++)
           {
-            if( videoCaptures[i] != NULL )
-            {
-              videoCaptures[i]->release();
-              delete videoCaptures[i];
-            }
+            streams[i].videoCapture->release();
+            streams[i].metadata->close();
+            delete streams[i].videoCapture;
+            delete streams[i].metadata;
           }
         exit(signum);  
         break;
@@ -90,28 +89,30 @@ int main(int argc, char *argv[])
   
   bool record[MAX_CAM];
   std::ofstream *metadatas[MAX_CAM];
-  int nbCam = 0;
+
   for(int i=0; i<MAX_CAM; i++)
   {
-   videoCaptures[i] = NULL; 
    VideoCapture *videoCapture;
     videoCapture = new VideoCapture(i);
     record[i] = false;
     if(videoCapture->isOpened())  // check if we succeeded
     {
         logger->Write(Logger::INFO,"ImageManager", "detected camera #"+to_string(i),"Logs");
-        videoCaptures[i] = videoCapture; 
-        nbCam++;
+        nbCams++;
+        streams[i].videoCapture = videoCapture;
+        streams[i].lastMean = THREASHOLD_MEAN - THREASHOLD*2;
+        streams[i].frame_id = 0;
+        streams[i].nbSkeep = 0;
         std::string path = BASE_PATH + name + "/cam" + to_string(i) + ".csv";
-        metadatas[i] = new std::ofstream(path, std::ios::trunc);
-        if(!*metadatas[i])
+        streams[i].metadata = new std::ofstream(path, std::ios::trunc);
+        if(!*streams[i].metadata)
         {
           logger->Write(Logger::ERRORLOG,"ImageManager", "Could not open " + path,"Logs");
         }
     }
   }
   
-  if(nbCam == 0)
+  if(nbCams == 0)
   {
     logger->Write(Logger::ERRORLOG,"ImageManager", "could not detect any camera","Logs");
     exit(-1);
@@ -122,69 +123,63 @@ int main(int argc, char *argv[])
     signal(SIGINT, signalHandler);
   }
 
-  
-  float lastMean = THREASHOLD_MEAN - THREASHOLD*2;
-  int i = 0;
+
   for(;;)
     {
-      usleep(MICRO_SEC_SEC/fps);
-      for(int j=0; j<MAX_CAM; j++)
+      usleep((MICRO_SEC_SEC/fps)/nbCams);
+      for(int j=0; j<nbCams; j++)
       {
-        if(videoCaptures[j] == NULL )
-        {
-            continue;
-        }
-                VideoCapture *videoCapture = videoCaptures[j];
+                VideoCapture *videoCapture = streams[j].videoCapture;
                 Mat currentImage;
 
                 bool isValid = videoCapture->read(currentImage); // get a new frame from camera
                 if(!isValid)
                 {
-                  logger->Write(Logger::ERRORLOG,"ImageManager", "invalid image "+to_string(i),"Logs");
+                  logger->Write(Logger::ERRORLOG,"ImageManager", "invalid image "+to_string(j),"Logs");
                     continue;
                 }
                 imshow("frame", currentImage);
                 
                 float lightMean = mean(mean(currentImage))[0];
-                if(lastMean + THREASHOLD < lightMean && lightMean > THREASHOLD_MEAN && !record[j])
+                if(streams[j].lastMean + THREASHOLD < lightMean && lightMean > THREASHOLD_MEAN && !streams[j].record)
                 {
                   logger->Write(Logger::INFO,"ImageManager", "Start recording camera #"+to_string(j),"Logs");
-                  record[j] = true;
+                  streams[j].record = true;
                 }
-                if(lastMean - THREASHOLD > lightMean && lightMean < THREASHOLD_MEAN && record[j])
+                if(streams[j].lastMean - THREASHOLD > lightMean && lightMean < THREASHOLD_MEAN && streams[j].record)
                 {
                   logger->Write(Logger::INFO,"ImageManager", "Stop recording camera #"+to_string(j),"Logs");
-                  record[j] = false;
+                  streams[j].record = false;
                 }
                 
-                lastMean = lightMean;
+                streams[j].lastMean = lightMean;
             //      if(lightMean > THREASHOLD_MEAN)
-                if(record[j])
+                if(streams[j].record)
                 {
                   std::ostringstream ss;
                   std::string path = BASE_PATH + name + "/";
                   mkdir(path.c_str(),0700);
-                  ss << path <<"img_" << to_string(j) << "_" << std::setw(5) << std::setfill('0') << i << ".jpg";
+                  ss << path <<"img_" << to_string(j) << "_" << std::setw(5) << std::setfill('0') << streams[j].frame_id << ".jpg";
                   std::string name =  ss.str();
-                  if(i%30 == 0)
+                  if(streams[j].frame_id%30 == 0)
                   {
                     logger->Write(Logger::INFO,"ImageManager", "saving " + name + " mean = "+to_string(lightMean),"Logs");
                   }
                   imwrite(name.c_str(), currentImage);
-                  if (metadatas[j])
+                  if (streams[j].metadata)
                   {
                      std::time_t result = std::time(nullptr);
-                    (*metadatas[j]) << i << "," << std::asctime(std::localtime(&result)) << std::endl;
+                    (*streams[j].metadata) << streams[j].frame_id << "," << std::asctime(std::localtime(&result)) ;
                   }
-                  i++;
+                  streams[j].frame_id++;
             //       waitKey(0); 
                 }
                 else
                 {
-                  nbSkeep++;
-                  if(nbSkeep%30 == 0)
+                  streams[j].nbSkeep++;
+                  if(streams[j].nbSkeep%30 == 0)
                   {
-                    logger->Write(Logger::DEBUG,"ImageManager", to_string(nbSkeep)+" images skipped (mean = "+to_string(lightMean)+")","Logs");
+                    logger->Write(Logger::DEBUG,"ImageManager", to_string(streams[j].nbSkeep)+" images skipped (mean = "+to_string(lightMean)+")","Logs");
                   }
                 }
       }
