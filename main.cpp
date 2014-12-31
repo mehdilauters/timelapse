@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
   else
   {
     name = string(argv[1]);
-    fps = atoi(argv[2]);
+    fps = atof(argv[2]);
   }
   
   
