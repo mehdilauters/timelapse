@@ -126,7 +126,8 @@ int main(int argc, char *argv[])
 
   for(;;)
     {
-      usleep((MICRO_SEC_SEC/fps)/nbCams);
+//       usleep((MICRO_SEC_SEC/fps)/nbCams);
+      sleep(fps);
       for(int j=0; j<nbCams; j++)
       {
                 VideoCapture *videoCapture = streams[j].videoCapture;
