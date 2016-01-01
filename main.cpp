@@ -1,3 +1,5 @@
+// ffmpeg -framerate 1 -pattern_type glob -i '*.jpg' -c:v libx264 out.mp4
+
 #include <signal.h>
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -7,6 +9,7 @@
 #include <sstream>
 #include <iomanip>
 #include "sys/stat.h"
+#include <boost/filesystem.hpp>
 #define THREASHOLD_MEAN 40
 #define THREASHOLD 5
 #define MICRO_SEC_SEC 1000000.
@@ -68,23 +71,117 @@ void signalHandler( int signum )
   }
 }
 
+std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+std::vector<std::string> split(const std::string &s, char delim) {
+    std::vector<std::string> elems;
+    split(s, delim, elems);
+    return elems;
+}
+
+std::vector<boost::filesystem::path> getImageList(boost::filesystem::path _path, string _ext)
+{
+        std::vector<boost::filesystem::path> list;
+        if(!boost::filesystem::exists(_path) || !boost::filesystem::is_directory(_path)) return list;
+
+        boost::filesystem::recursive_directory_iterator it(_path);
+        boost::filesystem::recursive_directory_iterator endit;
+
+        while(it != endit)
+        {
+            if(boost::filesystem::is_regular_file(*it) && it->path().extension() == _ext)
+            {
+              list.push_back(it->path());
+            }
+            ++it;
+
+        }
+        std::sort(list.begin(), list.end());
+
+        return list;
+}
+
+bool postProcess()
+{
+      std::ifstream f("cam0.csv", std::ios::in);
+      boost::filesystem::path path = "/home/mehdi/Mehdi/perso/newYearMusique";
+      std::vector<boost::filesystem::path> list = getImageList(path, ".jpg");
+      for (auto it = list.begin(); it != list.end(); ++it)
+      {
+          Mat img = imread((*it).string().c_str());
+          char metadata[255];
+          f.getline(metadata, 255);
+          
+          std::vector<std::string> metadatas = split(metadata, ',');
+          cout << metadatas[1] << endl;
+          std::string save = (*it).string() + "_";
+
+            putText(img, metadatas[1].c_str(), Point(10,40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,0,255), 1);
+          imwrite(save, img);
+
+      }
+      f.close();
+}
+
+void help()
+{
+    std::cout << "this help" << std::endl;
+}
+
+void rotate(cv::Mat& src, double angle, cv::Mat& dst)
+{
+    int len = std::max(src.cols, src.rows);
+    cv::Point2f pt(len/2., len/2.);
+    cv::Mat r = cv::getRotationMatrix2D(pt, angle, 1.0);
+
+    cv::warpAffine(src, dst, r, cv::Size(len, len));
+}
+
+
 int main(int argc, char *argv[])
 {
   int nbSkeep = 0;
   Logger * logger = new Logger(Logger::DEBUG);
-  int fps = 0;
+  int fps = 2;
   string name = "";
-  if(argc != 3)
+  bool date = false;
+  float rotateAngle = 0;
+  char c;
+  while ((c = getopt(argc, argv, "f:n:dr:h")) != -1)
   {
-    logger->Write(Logger::ERRORLOG,"ImageManager", "not enought argv","Logs");
-    logger->Write(Logger::INFO,"ImageManager", string(argv[0]) + " name fps","Logs");
-    exit(0);
+    switch (c)
+    {
+      case 'f':
+        fps = std::atoi(optarg);
+        break;
+      case 'r':
+        rotateAngle = std::atof(optarg);
+        break;
+      case 'n':
+        name = optarg;
+        break;
+      case 'd':
+          date = true;
+          break;
+      case 'h':
+        help();
+        return 0;
+        break;
+      default:
+        logger->Write(Logger::WARNING,"CONFIG", "Unknown option", "Logs");
+        help();
+        break;
+    }
   }
-  else
-  {
-    name = string(argv[1]);
-    fps = atof(argv[2]);
-  }
+  
+//   return postProcess();
   
   
   bool record[MAX_CAM];
@@ -139,6 +236,21 @@ int main(int argc, char *argv[])
                   logger->Write(Logger::ERRORLOG,"ImageManager", "invalid image "+to_string(j),"Logs");
                     continue;
                 }
+                
+                if(rotateAngle != 0)
+                {
+                   rotate(currentImage, rotateAngle, currentImage); 
+                }
+                if(date)
+                {
+                    std::string dateStr = "";
+                    time_t rawtime;
+                    struct tm * timeinfo;
+                    time (&rawtime);
+                    timeinfo = localtime (&rawtime);
+                    dateStr = std::to_string(timeinfo->tm_mday) + "/" + std::to_string(timeinfo->tm_mon+1) + "/" + std::to_string(timeinfo->tm_year + 1900) + " " + std::to_string(timeinfo->tm_hour) + ":" + std::to_string(timeinfo->tm_min);
+                    putText(currentImage, dateStr, Point(10,40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,0,255), 1);
+                }
                 imshow("frame", currentImage);
                 
                 float lightMean = mean(mean(currentImage))[0];
@@ -173,7 +285,7 @@ int main(int argc, char *argv[])
                     (*streams[j].metadata) << streams[j].frame_id << "," << std::asctime(std::localtime(&result)) ;
                   }
                   streams[j].frame_id++;
-            //       waitKey(0); 
+                  waitKey(0); 
                 }
                 else
                 {
