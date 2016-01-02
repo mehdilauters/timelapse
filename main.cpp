@@ -16,6 +16,12 @@
 #define BASE_PATH "./"
 #define MAX_CAM 5
 
+#ifdef USE_KODI
+    #include <jsonrpccpp/client/connectors/httpclient.h>
+    #include "xbmcremote.h"
+    using namespace jsonrpc;
+#endif
+
 using namespace std;
 using namespace cv;
 
@@ -154,7 +160,12 @@ int main(int argc, char *argv[])
   bool date = false;
   float rotateAngle = 0;
   char c;
-  while ((c = getopt(argc, argv, "f:n:dr:h")) != -1)
+  
+  #ifdef USE_KODI
+    std::string kodiUri = "";
+  #endif
+    
+  while ((c = getopt(argc, argv, "f:n:dr:hk:")) != -1)
   {
     switch (c)
     {
@@ -170,6 +181,11 @@ int main(int argc, char *argv[])
       case 'd':
           date = true;
           break;
+    #ifdef USE_KODI
+      case 'k':
+        kodiUri = "http://"+std::string(optarg)+"/jsonrpc";
+        break;
+    #endif
       case 'h':
         help();
         return 0;
@@ -177,13 +193,23 @@ int main(int argc, char *argv[])
       default:
         logger->Write(Logger::WARNING,"CONFIG", "Unknown option", "Logs");
         help();
+        exit(0);
         break;
     }
   }
   
 //   return postProcess();
   
-  
+#ifdef USE_KODI
+    XbmcRemoteClient* cli;
+    HttpClient* httpclient;
+    if(kodiUri != "")
+    {
+        httpclient = new HttpClient(kodiUri.c_str());
+        cli = new XbmcRemoteClient(*httpclient);
+    }
+#endif
+    
   bool record[MAX_CAM];
   std::ofstream *metadatas[MAX_CAM];
 
@@ -251,7 +277,18 @@ int main(int argc, char *argv[])
                     dateStr = std::to_string(timeinfo->tm_mday) + "/" + std::to_string(timeinfo->tm_mon+1) + "/" + std::to_string(timeinfo->tm_year + 1900) + " " + std::to_string(timeinfo->tm_hour) + ":" + std::to_string(timeinfo->tm_min);
                     putText(currentImage, dateStr, Point(10,40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,0,255), 1);
                 }
-                imshow("frame", currentImage);
+                
+                #ifdef USE_KODI
+                    try
+                    {
+                        Json::Value res = cli->Player_GetItem(0);
+                        putText(currentImage, res["item"]["label"].asString().c_str(), Point(10,currentImage.rows - 40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,0,255), 1);
+                    } 
+                    catch(JsonRpcException& e) {
+                        cerr << e.what() << endl;
+                    }
+                #endif
+//                 imshow("frame", currentImage);
                 
                 float lightMean = mean(mean(currentImage))[0];
                 if(streams[j].lastMean + THREASHOLD < lightMean && lightMean > THREASHOLD_MEAN && !streams[j].record)
@@ -285,7 +322,7 @@ int main(int argc, char *argv[])
                     (*streams[j].metadata) << streams[j].frame_id << "," << std::asctime(std::localtime(&result)) ;
                   }
                   streams[j].frame_id++;
-                  waitKey(0); 
+//                   waitKey(0); 
                 }
                 else
                 {

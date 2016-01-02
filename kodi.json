@@ -1,0 +1,52 @@
+[
+{
+    "name": "Playlist.Clear",
+    "params":[
+        {
+            "name":"playlistid",
+            "type":"integer"
+        }
+    ],
+    "returns":"string"
+},
+{
+    "name": "Playlist.Add",
+        "params":[
+            {
+                "name":"playlistid",
+                "type":"integer"
+            },
+            {
+                "name":"item"
+            }
+        ],
+        "returns": "string"
+},
+{
+    "name": "Player.Open",
+        "params":[
+            {
+                "name":"item"
+            }
+        ],
+            "returns": "string"
+},
+{
+    "name": "Player.PlayPause",
+        "params":[
+            {
+                "name":"playerid"
+            }
+        ],
+            "returns": "string"
+},
+{
+    "name": "Player.GetItem",
+        "params":[
+            {
+                "name":"playerid"
+            }
+        ],
+            "returns": {}
+}
+]
