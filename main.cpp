@@ -151,7 +151,7 @@ void rotate(cv::Mat& src, double angle, cv::Mat& dst)
 }
 
 
-int main(int argc, char *argv[])
+int main(int argc, char **argv)
 {
   int nbSkeep = 0;
   Logger * logger = new Logger(Logger::DEBUG);
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
   string name = "";
   bool date = false;
   float rotateAngle = 0;
-  char c;
+  int c;
   
   #ifdef USE_KODI
     std::string kodiUri = "";
@@ -171,6 +171,7 @@ int main(int argc, char *argv[])
     {
       case 'f':
         fps = std::atoi(optarg);
+        std::cout << "fps " <<fps << std::endl;
         break;
       case 'r':
         rotateAngle = std::atof(optarg);
@@ -192,6 +193,7 @@ int main(int argc, char *argv[])
         break;
       default:
         logger->Write(Logger::WARNING,"CONFIG", "Unknown option", "Logs");
+        std::cout << (int) c << std::endl;
         help();
         exit(0);
         break;
@@ -201,7 +203,7 @@ int main(int argc, char *argv[])
 //   return postProcess();
   
 #ifdef USE_KODI
-    XbmcRemoteClient* cli;
+    XbmcRemoteClient* cli = NULL;
     HttpClient* httpclient;
     if(kodiUri != "")
     {
@@ -281,8 +283,12 @@ int main(int argc, char *argv[])
                 #ifdef USE_KODI
                     try
                     {
+                      if(cli != NULL) {
                         Json::Value res = cli->Player_GetItem(0);
-                        putText(currentImage, res["item"]["label"].asString().c_str(), Point(10,currentImage.rows - 40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,0,255), 1);
+                        std::string text = res["item"]["artist"].asString() + " " + res["item"]["title"].asString();
+                        std::cout << text << std::endl;
+                        putText(currentImage, text.c_str(), Point(10,currentImage.rows - 40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0,0,255), 1);
+                      }
                     } 
                     catch(JsonRpcException& e) {
                         cerr << e.what() << endl;
